@@ -1,0 +1,269 @@
+# IDA and ML Training Analysis Configuration
+# Configuration for structural analysis, IDA pipeline, and ML training
+# Last Updated: 2024-03-27
+
+# ============================================================================
+# INCREMENTAL DYNAMIC ANALYSIS (IDA) CONFIGURATION
+# ============================================================================
+
+ida:
+  # Intensity Measure (IM) - Spectral acceleration at target period
+  intensity_measure:
+    type: "Sa"  # Spectral Acceleration
+    period: 0.5  # seconds (representative for RC SMRF)
+    damping: 0.05  # 5% critical damping
+  
+  # Intensity Range
+  intensity_range:
+    min: 0.05  # g (minimum)
+    max: 1.50  # g (maximum)
+    initial_step: 0.10  # g
+    adaptive: false  # Use adaptive stepping if true
+  
+  # Analysis Time Parameters
+  analysis:
+    time_step: 0.005  # seconds
+    end_time: 20.0  # seconds (duration after earthquake)
+    record_start: 0.0  # Start time in ground motion record
+    
+  # Convergence & Solver Parameters
+  convergence:
+    tolerance: 1.0e-8  # Newton-Raphson convergence tolerance
+    max_iterations: 25  # Max iterations per time step
+    algorithm: "Newton"  # Newton or ModifiedNewton
+    test_type: "NormDispIncr"  # Convergence test type
+  
+  # Recording Parameters
+  recorders:
+    node_drifts: true  # Record story drift ratios
+    base_reactions: true  # Record base shear and moment
+    element_stresses: true  # Record element forces
+    recording_interval: 10  # Record every N time steps
+  
+  # Ground Motion Processing
+  ground_motion:
+    scaling_method: "IM-based"  # Scale to target Sa
+    damping_correction: true  # Apply damping correction to Sa
+    # Clipping options
+    clip_negative_time: true  # Remove pre-event motion
+    pad_post_event: 5.0  # Seconds to pad after motion stops
+
+# ============================================================================
+# MACHINE LEARNING TRAINING CONFIGURATION
+# ============================================================================
+
+machine_learning:
+  # Data Splitting
+  data_split:
+    train_ratio: 0.80  # 80% training data
+    validation_ratio: 0.15  # Of training set → 70% train, 15% validation
+    test_ratio: 0.20  # 20% testing data (held out)
+    random_state: 42  # Reproducibility seed
+  
+  # Feature Normalization
+  preprocessing:
+    scaler_type: "StandardScaler"  # StandardScaler or MinMaxScaler
+    fit_on: "train"  # Fit normalization on training data only
+    outlier_removal: false
+    outlier_threshold: 5.0  # Std deviations
+  
+  # Cross-Validation
+  cross_validation:
+    enabled: true
+    n_splits: 5  # 5-fold CV
+    stratified: false  # For regression, use regular KFold
+  
+  # Models to Train
+  models:
+    linear_regression:
+      enabled: true
+      hyperparameters:
+        fit_intercept: true
+        normalize: false
+    
+    random_forest:
+      enabled: true
+      hyperparameters:
+        n_estimators: 200
+        max_depth: 20
+        min_samples_split: 5
+        min_samples_leaf: 2
+        random_state: 42
+        n_jobs: -1  # Use all cores
+        bootstrap: true
+        oob_score: true  # Out-of-bag scoring
+    
+    xgboost:
+      enabled: true
+      hyperparameters:
+        objective: "reg:squarederror"
+        n_estimators: 200
+        learning_rate: 0.1
+        max_depth: 6
+        min_child_weight: 1
+        subsample: 0.8
+        colsample_bytree: 0.8
+        random_state: 42
+        n_jobs: -1
+    
+    neural_network:
+      enabled: true
+      hyperparameters:
+        input_features: "auto"  # Determined from data
+        hidden_layers: [128, 64, 32]  # Neurons per layer
+        activation: "relu"
+        output_activation: "linear"  # Regression
+        batch_size: 32
+        epochs: 100
+        validation_split: 0.2
+        early_stopping: true
+        patience: 10  # Epochs to wait before stopping
+        optimizer: "adam"
+        learning_rate: 0.001
+        loss: "mse"
+        metrics: ["mae", "mse"]
+        dropout_rate: 0.2
+        l2_regularization: 0.001
+
+  # Hyperparameter Optimization (Optuna)
+  hyperparameter_tuning:
+    enabled: false
+    method: "Optuna"  # Or GridSearch, RandomSearch
+    n_trials: 50
+    sampler: "TPE"  # Tree-structured Parzen Estimator
+    pruner: "MedianPruner"
+    timeout: 3600  # seconds
+    n_jobs: 1
+
+  # Model Evaluation Metrics
+  evaluation_metrics:
+    regression:
+      - "r2"
+      - "rmse"
+      - "mae"
+      - "mape"
+  
+  # SHAP Analysis for Interpretability
+  shap_analysis:
+    enabled: true
+    methods:
+      - "TreeExplainer"  # Fast for tree-based models
+      - "KernelExplainer"  # Slower but model-agnostic
+    n_samples: 100  # Samples for Kernel explainer
+    max_display_features: 20
+
+# ============================================================================
+# FILE PATHS & DIRECTORIES
+# ============================================================================
+
+paths:
+  # Base directories (relative to project root)
+  data_dir: "data"
+  raw_data_dir: "data/raw"
+  processed_data_dir: "data/processed"
+  metadata_dir: "data/metadata"
+  
+  model_dir: "models"
+  openseespy_models_dir: "models/openseespy"
+  ml_models_dir: "models/ml_models"
+  checkpoints_dir: "models/checkpoints"
+  
+  results_dir: "results"
+  figures_dir: "results/figures"
+  reports_dir: "results/reports"
+  tables_dir: "results/tables"
+  
+  config_dir: "config"
+  
+  # Configuration files
+  bnbc_config: "config/bnbc_parameters.yaml"
+  
+  # Output file naming conventions
+  processed_data_file: "training_data_combined.csv"
+  model_results_file: "model_results.json"
+  shap_output_prefix: "shap_analysis"
+
+# ============================================================================
+# EXPERIMENT TRACKING (MLflow)
+# ============================================================================
+
+mlflow:
+  enabled: false  # Enable if using MLflow
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "seismic-drift-ml-models"
+  
+  # Artifacts to log
+  log_artifacts:
+    - "models"
+    - "figures"
+    - "results"
+  
+  # Parameters to log
+  log_params:
+    - "train_ratio"
+    - "n_estimators"
+    - "max_depth"
+    - "learning_rate"
+
+# ============================================================================
+# LOGGING & OUTPUT
+# ============================================================================
+
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "analysis.log"
+  
+output:
+  verbose: true  # Print progress to console
+  save_figures: true
+  figure_format: "png"  # png, pdf, eps
+  figure_dpi: 300
+  
+  save_tables: true
+  table_format: "csv"  # csv, xlsx, json
+
+# ============================================================================
+# VALIDATION & VERIFICATION
+# ============================================================================
+
+validation:
+  # Model performance thresholds
+  min_r2_train: 0.85
+  min_r2_test: 0.80
+  
+  # Residual analysis
+  check_normality: true  # Shapiro-Wilk test
+  check_homoscedasticity: true  # Breusch-Pagan test
+  
+  # Cross-validation score threshold
+  min_cv_score: 0.80
+
+# ============================================================================
+# COMPUTATION RESOURCES
+# ============================================================================
+
+computation:
+  use_gpu: false  # Enable GPU for TensorFlow if available
+  gpu_memory_fraction: 0.8  # Fraction of GPU memory to use
+  n_jobs: -1  # -1 = use all cores, 1 = single core
+  batch_processing: true
+  batch_size: 100  # For large datasets
+
+# ============================================================================
+# RANDOM SEEDS (Reproducibility)
+# ============================================================================
+
+random_state:
+  numpy: 42
+  tensorflow: 42
+  sklearn: 42
+  pandas: 42
+  seed: 42  # Master seed for all operations
+
+# Document metadata
+metadata:
+  version: "1.0"
+  last_updated: "2024-03-27"
+  author: "ML Research Team"
+  description: "Configuration for Phase 2-3: IDA analysis and ML model training"

@@ -1,0 +1,184 @@
+# BNBC 2020 Seismic Parameters Configuration
+# Bangladesh National Building Code - Seismic Design Provisions
+# Reference: BNBC 2020, Section 3.2 - Seismic Hazard Analysis
+
+seismic_zones:
+  zone_1:
+    zone_name: "Zone I"
+    pga: 0.05  # Peak Ground Acceleration (g)
+    z_coeff: 0.12  # Seismic Zone Coefficient (Z)
+    description: "Very low hazard"
+    regions: ["Small northern areas"]
+    
+  zone_2:
+    zone_name: "Zone II"
+    pga: 0.10
+    z_coeff: 0.18
+    description: "Low hazard"
+    regions: ["Most of Bangladesh"]
+    
+  zone_3:
+    zone_name: "Zone III"
+    pga: 0.15
+    z_coeff: 0.24
+    description: "Moderate hazard"
+    regions: ["Dhaka region", "Central Bangladesh"]
+    
+  zone_4:
+    zone_name: "Zone IV"
+    pga: 0.20
+    z_coeff: 0.36
+    description: "High hazard"
+    regions: ["Chittagong", "Southeast Bangladesh"]
+
+# Site Classification (BNBC 2020 Section 3.2)
+# Based on average shear wave velocity (VS30) in upper 30m
+site_classes:
+  A:
+    name: "Hard Rock"
+    vs30_min: 1500  # Shear wave velocity (m/s)
+    vs30_max: null
+    fa: 0.8  # Amplification factor
+    fv: 0.8
+    
+  B:
+    name: "Rock"
+    vs30_min: 760
+    vs30_max: 1500
+    fa: 1.0
+    fv: 1.0
+    
+  C:
+    name: "Very Dense Soil & Soft Rock"
+    vs30_min: 360
+    vs30_max: 760
+    fa: 1.2
+    fv: 1.2
+    
+  D:
+    name: "Stiff Soil"
+    vs30_min: 180
+    vs30_max: 360
+    fa: 1.6
+    fv: 1.4
+    
+  E:
+    name: "Soft Soil"
+    vs30_min: 0
+    vs30_max: 180
+    fa: 2.5
+    fv: 1.7
+
+# Building Code Parameters (BNBC 2020)
+building_parameters:
+  # Importance Factors
+  importance_factors:
+    I: 1.0  # Ordinary structures
+    II: 1.0  # Standard structures
+    III: 1.25  # Special facilities, hospitals, schools
+    IV: 1.5  # Critical infrastructure
+  
+  # Response Modification Factors (R) for RC Special Moment Resisting Frames
+  response_modification:
+    smrf_low_rise: 8.0  # 1-3 stories
+    smrf_mid_rise: 8.5  # 4-7 stories
+    smrf_high_rise: 8.0  # 8+ stories
+  
+  # Deflection Amplification Factors
+  displacement_amplification:
+    smrf: 5.5
+  
+  # Overstrength Factors (Ω)
+  overstrength_factor: 3.0
+
+# Damping Parameters
+damping:
+  default_ratio: 0.05  # 5% critical damping for RC structures
+  # Modal damping can be adjusted using Rayleigh damping:
+  # C = a*M + b*K where a and b are calibrated below
+  rayleigh_damping:
+    a_coefficient: 0.0  # Mass-proportional coefficient
+    b_coefficient: 0.0  # Stiffness-proportional coefficient
+
+# Design Response Spectrum Parameters (BNBC 2020)
+response_spectrum:
+  # Period ranges and acceleration coefficients
+  # Sa(T) = Z * I * Ca * S / (Rw)
+  periods:
+    - T: 0.0
+      Ca: 0.40
+    - T: 0.5
+      Ca: 0.40
+    - T: 1.0
+      Ca: 0.30
+    - T: 2.0
+      Ca: 0.20
+    - T: 4.0
+      Ca: 0.10
+  
+  # Soil-structure interaction (upper period limit)
+  upper_period_limit_factor: 1.25  # For tall flexible structures
+  
+  # Vertical seismic coefficient (typical RC buildings)
+  vertical_coefficient: 0.50  # 50% of horizontal
+  
+  # Long-period transition period (seconds)
+  long_period_transition: 16.0
+
+# Code Factors for RC Moment Resisting Frames
+rc_smrf_design:
+  # Strength reduction factors (φ)
+  strength_reduction:
+    flexure: 0.90
+    shear: 0.85
+    compression: 0.70
+    compression_spiral: 0.75
+  
+  # Minimum concrete strength
+  fc_min_mpa: 25.0  # MPa (typical for medium-rise)
+  
+  # Minimum steel reinforcement ratio  
+  rho_min: 0.01  # 1% for flexural members
+  
+  # Maximum steel reinforcement ratio
+  rho_max: 0.06  # 6% per code
+  
+  # Confinement requirements (SMRF)
+  confinement:
+    spacing_max: 10.0  # db (rebar diameter) spacing for hoops
+    transverse_reinforcement_min: 0.12  # fc'/fy volume ratio
+
+# Default Material Properties (if not specified in model input)
+default_materials:
+  concrete:
+    fc_prime: 28.0  # Compressive strength (MPa) - typical for Bangladesh
+    weight_density: 2400.0  # kg/m³
+    poisson_ratio: 0.20
+    modulus_elasticity: 25000.0  # MPa (computed as 3920*sqrt(fc) per ACI)
+  
+  steel_rebar:
+    yield_strength: 420.0  # MPa (Type 2 steel, common in Bangladesh)
+    elastic_modulus: 200000.0  # MPa
+    poisson_ratio: 0.30
+    density: 7850.0  # kg/m³
+
+# Analysis Defaults (override with analysis_config.yaml if needed)
+gravity_loads:
+  # Self weight factors
+  dead_load_factor: 1.0  # 100% of self-weight
+  
+  # Live load factors for different occupancy types
+  live_load_residential: 40.0  # kN/m² (typical)
+  live_load_office: 50.0  # kN/m²
+  live_load_school: 50.0  # kN/m²
+  
+  # Reference floor height
+  floor_height_default: 3.5  # meters (typical for RC buildings)
+
+# Document metadata
+metadata:
+  version: "1.0"
+  standard: "BNBC 2020"
+  last_updated: "2024-03-27"
+  author: "ML Research Team"
+  source: "Bangladesh National Building Code 2020"
