@@ -30,12 +30,17 @@ import pandas as pd
 # Add project to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# Configure enhanced logging
+from src.utils.logger import ProjectLogger
+
+proj_logger = ProjectLogger(
+    name='ml_seismic_drift',
+    log_level='INFO',
+    log_dir='logs',
+    console=True,
+    file_logging=True
 )
-logger = logging.getLogger('main')
+logger = proj_logger.get_logger()
 
 
 def load_config(config_path: Optional[str] = None) -> Dict:

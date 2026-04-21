@@ -442,6 +442,57 @@ class RCFrame:
 
         self.gravity_applied = True
 
+    def apply_lateral_loads(self, base_shear: float, distribution: str = 'triangular'):
+        """
+        Apply lateral loads based on seismic force distribution
+
+        Args:
+            base_shear: Base shear force [kN]
+            distribution: 'linear' (triangular) or 'uniform' distribution per BNBC 2020
+        """
+        assert self.geometry is not None, "Geometry must be set"
+        if not self.model_created:
+            raise ValueError("Model must be created before applying loads")
+
+        # Create load pattern for lateral loads
+        ops.timeSeries('Constant', 2)  # type: ignore
+        ops.pattern('Plain', 2, 2)  # type: ignore
+
+        # Calculate story heights and lateral loads
+        story_heights = self.geometry.story_heights
+        total_height = sum(story_heights)
+
+        if distribution == 'linear':
+            # Triangular (linear) distribution per BNBC 2020 Section 3.2
+            # Force at story i: Fi = (hi * Wi / sum(hj * Wj)) * V
+            height_weights = []
+            for story in range(1, self.n_stories + 1):
+                height_from_base = sum(story_heights[:story])
+                height_weights.append(height_from_base)
+
+            total_height_weight = sum(height_weights)
+
+            # Apply lateral loads
+            for story in range(1, self.n_stories + 1):
+                story_force = (height_weights[story - 1] / total_height_weight) * base_shear
+                
+                # Apply to each bay node at this floor (distribute among bays)
+                force_per_node = story_force / (self.n_bays + 1)
+                
+                for bay in range(self.n_bays + 1):
+                    node_id = self.nodes[f'floor_{story}_bay_{bay}']
+                    ops.load(node_id, force_per_node, 0, 0)  # type: ignore  # Horizontal load
+
+        else:  # uniform distribution
+            # Uniform distribution
+            force_per_story = base_shear / self.n_stories
+            force_per_node = force_per_story / (self.n_bays + 1)
+
+            for story in range(1, self.n_stories + 1):
+                for bay in range(self.n_bays + 1):
+                    node_id = self.nodes[f'floor_{story}_bay_{bay}']
+                    ops.load(node_id, force_per_node, 0, 0)  # type: ignore  # Horizontal load
+
     def save_model(self, filepath: str):
         """Save model to JSON file"""
         assert self.geometry is not None, "Geometry must be set"
