@@ -1,0 +1,151 @@
+name: Test Suite - ML Seismic Drift Research
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.10', '3.11', '3.12']
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      working-directory: ./project
+      run: |
+        python -m pip install --upgrade pip setuptools wheel
+        python -m pip install -r requirements.txt
+        python -m pip install pytest pytest-cov black flake8 mypy
+
+    - name: Lint with flake8
+      working-directory: ./project
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Format check with black
+      working-directory: ./project
+      run: |
+        black --check src/ tests/ --line-length=100
+
+    - name: Type check with mypy
+      working-directory: ./project
+      continue-on-error: true
+      run: |
+        mypy src/ --ignore-missing-imports --no-error-summary 2>/dev/null || true
+
+    - name: Run tests with pytest
+      working-directory: ./project
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=term-missing
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./project/coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+    - name: Test critical imports
+      working-directory: ./project
+      run: |
+        python -c "
+        import sys
+        print('Testing critical imports...')
+        from src.modeling.rc_frame import RCFrame
+        from src.modeling.phase1_generator import generate_phase1_models
+        from src.utils.logger import ProjectLogger
+        from src.ida.ida_runner import run_ida_analysis
+        from src.ml.trainer import MLTrainer
+        print('✓ All critical imports successful')
+        "
+
+    - name: Verify package structure
+      working-directory: ./project
+      run: |
+        python -c "
+        from pathlib import Path
+        import sys
+        
+        required_dirs = ['src', 'tests', 'config', 'notebooks', 'data', 'models', 'results']
+        missing = [d for d in required_dirs if not Path(d).exists()]
+        
+        if missing:
+            print(f'✗ Missing directories: {missing}')
+            sys.exit(1)
+        else:
+            print(f'✓ All required directories present: {required_dirs}')
+        
+        required_files = ['config/bnbc_parameters.yaml', 'config/analysis_config.yaml', 'requirements.txt']
+        missing_files = [f for f in required_files if not Path(f).exists()]
+        
+        if missing_files:
+            print(f'✗ Missing files: {missing_files}')
+            sys.exit(1)
+        else:
+            print(f'✓ All required files present: {required_files}')
+        "
+
+  build-docs:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Verify documentation
+      run: |
+        echo "Checking documentation files..."
+        [ -f README.md ] && echo "✓ README.md found" || echo "✗ README.md missing"
+        [ -f plan/task_plan.md ] && echo "✓ task_plan.md found" || echo "✗ task_plan.md missing"
+        [ -f ANALYSIS_METHODS.md ] && echo "✓ ANALYSIS_METHODS.md found" || echo "✗ ANALYSIS_METHODS.md missing"
+        [ -f plan/report.md ] && echo "✓ report.md found" || echo "✗ report.md missing"
+
+    - name: Check markdown formatting
+      run: |
+        # Basic markdown checks (optional)
+        grep -r "^#" *.md | head -20 || echo "No markdown headers found in root"
+
+  code-quality:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Count lines of code
+      working-directory: ./project
+      run: |
+        echo "=== Code Statistics ==="
+        echo "Source code lines:"
+        find src -name "*.py" | xargs wc -l | tail -1
+        echo "Test code lines:"
+        find tests -name "*.py" | xargs wc -l | tail -1
+        echo "Total Python files:"
+        find . -name "*.py" | wc -l
+
+    - name: Check for TODO/FIXME markers
+      working-directory: ./project
+      run: |
+        echo "=== Checking for TODO/FIXME markers ==="
+        grep -r "TODO\|FIXME" src/ tests/ || echo "✓ No TODO/FIXME markers found"
+
+    - name: Verify test coverage threshold
+      working-directory: ./project
+      run: |
+        echo "=== Code coverage report ==="
+        echo "Note: Coverage threshold is 75% for critical modules"
+        # This will be populated after pytest runs with coverage

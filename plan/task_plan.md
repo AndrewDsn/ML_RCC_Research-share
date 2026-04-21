@@ -2,10 +2,10 @@
 ## ML-Based Seismic Drift Prediction of RC Buildings Under BNBC 2020
 
 **Date Created:** March 27, 2026  
-**Last Updated:** March 27, 2026  
-**Current Phase:** Phase 1 — Structural Modeling (Ready to Begin)  
+**Last Updated:** April 21, 2026  
+**Current Phase:** Phase 2 — IDA Analysis & Data Generation (Infrastructure Ready)  
 **Python Version:** 3.12.1  
-**Status:** ✅ **PROJECT INFRASTRUCTURE COMPLETE** | 📚 **ANALYSIS METHODS INTEGRATED**
+**Status:** ✅ **PHASE 1 COMPLETE (100%)** | 🚀 **PHASE 2 INFRASTRUCTURE STARTED**
 
 ---
 
