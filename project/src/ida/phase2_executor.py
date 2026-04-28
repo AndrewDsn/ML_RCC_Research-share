@@ -31,6 +31,7 @@ import yaml
 from src.modeling.rc_frame import RCFrame
 from src.ida.ground_motion_manager import Phase2GroundMotionGenerator
 from src.ida.phase2_runner import Phase2IDAAnalyzer, IDAResult
+from src.ida.verified_gm_loader import VerifiedGMLoader
 from src.utils.logger import ProjectLogger
 
 
@@ -141,34 +142,80 @@ class Phase2Executor:
         
         return models
     
-    def prepare_ground_motions(self) -> Dict[int, any]:
+    def prepare_ground_motions(self, use_verified: bool = False) -> Dict[int, any]:
         """
         Generate ground motion datasets for all seismic zones.
+        
+        Args:
+            use_verified: Use verified PEER NGA records (True) or synthetic (False)
         
         Returns:
             Dictionary mapping zone ID to GroundMotionDataset
         
         Note:
-            Uses Phase2GroundMotionGenerator with synthetic GMs.
-            For production, replace with PEER NGA database loader.
+            - Verified: Uses PEER NGA-West2 curated database (~8-12 records per zone)
+            - Synthetic: Generates synthetic GMs matching BNBC spectrum
         """
-        self.logger.info(
-            f"Generating synthetic ground motions "
-            f"({self.config.n_gm_per_zone} per zone, 4 zones)..."
-        )
-        
-        gm_datasets = self.gm_generator.generate_all_zone_datasets(
-            n_records=self.config.n_gm_per_zone
-        )
-        
-        self.logger.info(f"Generated {len(gm_datasets)} zone datasets")
-        for zone_id, gm_set in gm_datasets.items():
-            pgas = [r['pga'] for r in gm_set.records]
-            pga_min, pga_max = min(pgas), max(pgas)
+        if use_verified:
             self.logger.info(
-                f"  Zone {zone_id}: {len(gm_set.records)} records, "
-                f"PGA range: {pga_min:.3f}-{pga_max:.3f}g"
+                f"Loading verified ground motion records "
+                f"({self.config.n_gm_per_zone} per zone, 4 zones)..."
             )
+            
+            # Load verified records from PEER NGA-West2
+            loader = VerifiedGMLoader(use_verified=True)
+            gm_datasets = {}
+            
+            for zone in self.config.seismic_zones:
+                zone_records = loader.get_records_for_zone(
+                    zone=zone, 
+                    n_records=self.config.n_gm_per_zone
+                )
+                
+                if zone_records.empty:
+                    self.logger.warning(f"No verified records for zone {zone}")
+                    continue
+                
+                # Create mock dataset-like object from DataFrame
+                class GMDataset:
+                    def __init__(self, df):
+                        self.records = []
+                        for _, row in df.iterrows():
+                            self.records.append({
+                                'id': row['file_id'],
+                                'pga': row['pga_g'],
+                                'magnitude': row['magnitude'],
+                                'distance': row['distance_km'],
+                                'duration': row['duration'],
+                                'dt': row['dt'],
+                                'event': row['eq_name'],
+                                'station': row['station'],
+                            })
+                
+                gm_datasets[zone] = GMDataset(zone_records)
+                
+                self.logger.info(
+                    f"  Zone {zone}: {len(zone_records)} verified PEER NGA records loaded"
+                )
+        
+        else:
+            self.logger.info(
+                f"Generating synthetic ground motions "
+                f"({self.config.n_gm_per_zone} per zone, 4 zones)..."
+            )
+            
+            gm_datasets = self.gm_generator.generate_all_zone_datasets(
+                n_records=self.config.n_gm_per_zone
+            )
+            
+            self.logger.info(f"Generated {len(gm_datasets)} zone datasets")
+            for zone_id, gm_set in gm_datasets.items():
+                pgas = [r['pga'] for r in gm_set.records]
+                pga_min, pga_max = min(pgas), max(pgas)
+                self.logger.info(
+                    f"  Zone {zone_id}: {len(gm_set.records)} records, "
+                    f"PGA range: {pga_min:.3f}-{pga_max:.3f}g"
+                )
         
         return gm_datasets
     
@@ -235,7 +282,8 @@ class Phase2Executor:
     def run_full_campaign(
         self,
         n_gm_per_zone: Optional[int] = None,
-        sample_gm_per_building: Optional[int] = None
+        sample_gm_per_building: Optional[int] = None,
+        use_verified: bool = False
     ) -> pd.DataFrame:
         """
         Execute complete Phase 2 IDA analysis campaign.
@@ -244,6 +292,7 @@ class Phase2Executor:
             n_gm_per_zone: Override GM count per zone (default: config value)
             sample_gm_per_building: Limit GMs per building for quick testing
                                    (default: None = all)
+            use_verified: Use verified PEER NGA records (True) or synthetic (False)
         
         Returns:
             Consolidated DataFrame with all IDA results (~7,500-10,000 rows)
@@ -251,18 +300,26 @@ class Phase2Executor:
         Example:
             executor = Phase2Executor()
             
-            # Full campaign (production)
+            # Verified records campaign (production - fewer records, high quality)
+            results = executor.run_full_campaign(
+                n_gm_per_zone=8,  # 8 verified PEER NGA records per zone
+                use_verified=True
+            )
+            
+            # Synthetic records campaign (many records)
             results = executor.run_full_campaign(n_gm_per_zone=100)
             
             # Quick test (5 GMs per zone)
             results = executor.run_full_campaign(
                 n_gm_per_zone=5,
-                sample_gm_per_building=2
+                sample_gm_per_building=2,
+                use_verified=True
             )
         """
         start_time = datetime.now()
         self.logger.info("=" * 80)
         self.logger.info("PHASE 2 EXECUTOR: IDA ANALYSIS CAMPAIGN")
+        self.logger.info(f"Mode: {'VERIFIED RECORDS' if use_verified else 'SYNTHETIC RECORDS'}")
         self.logger.info(f"Start time: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
         self.logger.info("=" * 80)
         
@@ -280,7 +337,7 @@ class Phase2Executor:
         
         # Step 2: Prepare ground motions
         self.logger.info("\n[Step 2/4] Preparing ground motion records...")
-        gm_datasets = self.prepare_ground_motions()
+        gm_datasets = self.prepare_ground_motions(use_verified=use_verified)
         
         # Step 3: Execute IDA analysis
         self.logger.info("\n[Step 3/4] Executing multi-stripe IDA analysis...")
@@ -313,12 +370,13 @@ class Phase2Executor:
             return pd.DataFrame()
         
         # Save results
-        output_path = self.output_dir / "ida_results.csv"
+        result_type = "verified" if use_verified else "synthetic"
+        output_path = self.output_dir / f"ida_results_{result_type}.csv"
         master_results.to_csv(output_path, index=False)
         self.logger.info(f"Results saved: {output_path} ({len(master_results)} rows)")
         
         # Generate statistics
-        self._generate_campaign_statistics(master_results)
+        self._generate_campaign_statistics(master_results, result_type)
         
         # Timing
         end_time = datetime.now()
@@ -329,14 +387,16 @@ class Phase2Executor:
         
         return master_results
     
-    def _generate_campaign_statistics(self, results_df: pd.DataFrame):
+    def _generate_campaign_statistics(self, results_df: pd.DataFrame, result_type: str = "campaign"):
         """
         Generate and log summary statistics for IDA campaign.
         
         Args:
             results_df: Master results DataFrame
+            result_type: Type of campaign ("verified" or "synthetic")
         """
         stats = {
+            "campaign_type": result_type,
             "total_analyses": len(results_df),
             "unique_buildings": results_df['building_id'].nunique(),
             "unique_zones": results_df['zone'].nunique(),
